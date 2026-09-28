@@ -13,6 +13,7 @@ use App\Models\Payment;
 use App\Models\PaymentEvent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class PaymentWebhookTest extends TestCase
@@ -153,6 +154,50 @@ class PaymentWebhookTest extends TestCase
 
         // Only 1 record exists
         $this->assertEquals(1, PaymentEvent::where('event_id', 'evt_concurrent_001')->count());
+    }
+
+    public function test_webhook_handles_database_unique_constraint_violation_on_concurrent_race_condition(): void
+    {
+        [, , , $invoice, $payment] = $this->createPaymentFixture(500000.00, PaymentStatus::Pending);
+
+        // Simulate simultaneous race condition:
+        // Right when PaymentEvent is about to be inserted by Thread 2,
+        // Thread 1 has just committed the record in the background.
+        PaymentEvent::creating(function ($model) use ($payment): bool {
+            if ($model->event_id === 'evt_race_collision_001') {
+                DB::table('payment_events')->insert([
+                    'provider' => 'mock',
+                    'event_id' => 'evt_race_collision_001',
+                    'event_type' => 'payment.success',
+                    'payload' => json_encode(['transaction_id' => $payment->transaction_id]),
+                    'status' => PaymentEventStatus::Processed->value,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return true;
+        });
+
+        $payload = [
+            'event_id' => 'evt_race_collision_001',
+            'event_type' => 'payment.success',
+            'transaction_id' => $payment->transaction_id,
+        ];
+
+        // Webhook request arrives; during create(), UniqueConstraintViolationException is thrown and caught
+        $response = $this->postJson('/api/webhooks/payment/mock', $payload);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'status' => 'duplicate',
+                'message' => 'Duplicate webhook event detected, skipping',
+                'event_id' => 'evt_race_collision_001',
+                'provider' => 'mock',
+            ]);
+
+        // Verify only 1 event record exists in database
+        $this->assertEquals(1, PaymentEvent::where('event_id', 'evt_race_collision_001')->count());
     }
 
     public function test_invalid_webhook_returns_422(): void

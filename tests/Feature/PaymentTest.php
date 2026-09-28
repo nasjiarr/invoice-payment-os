@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Domain\Payment\PaymentService;
 use App\Enums\BusinessRole;
 use App\Enums\InvoiceStatus;
 use App\Enums\PaymentStatus;
@@ -446,5 +447,84 @@ class PaymentTest extends TestCase
                     'status' => 'paid',
                 ],
             ]);
+    }
+
+    public function test_exact_business_result_partial_and_full_payment_lifecycle_with_outstanding_calculation(): void
+    {
+        [$user, $business, $customer] = $this->createBusinessWithUser();
+        // Step 1: Create an invoice with Rp10.000.000
+        $invoice = $this->createInvoice($business, $customer, 10000000.00);
+
+        Sanctum::actingAs($user);
+        $paymentService = app(PaymentService::class);
+
+        // Pre-condition: Outstanding balance equals entire invoice total
+        $this->assertEquals(0.00, $paymentService->getTotalPaid($invoice));
+        $this->assertEquals(10000000.00, $paymentService->getOutstandingBalance($invoice));
+        $this->assertEquals(InvoiceStatus::Sent, $invoice->status);
+
+        // Step 2: Payment of Rp3.000.000
+        $partialResponse = $this->postJson("/api/invoices/{$invoice->id}/payments", [
+            'amount' => 3000000.00,
+            'status' => 'paid',
+            'payment_method' => 'bank_transfer',
+            'notes' => 'First milestone payment of 30%',
+        ]);
+
+        $partialResponse->assertStatus(201)
+            ->assertJson([
+                'data' => [
+                    'amount' => '3000000.00',
+                    'status' => 'paid',
+                ],
+            ]);
+
+        // Business Result Check #1:
+        // Invoice status must be partially_paid
+        $freshInvoice = $invoice->fresh();
+        $this->assertEquals(InvoiceStatus::PartiallyPaid, $freshInvoice->status);
+        // Total paid must be Rp3.000.000
+        $this->assertEquals(3000000.00, $paymentService->getTotalPaid($freshInvoice));
+        // Outstanding balance must be exactly Rp7.000.000
+        $this->assertEquals(7000000.00, $paymentService->getOutstandingBalance($freshInvoice));
+
+        // Step 3: Second payment of remaining Rp7.000.000
+        $fullResponse = $this->postJson("/api/invoices/{$invoice->id}/payments", [
+            'amount' => 7000000.00,
+            'status' => 'paid',
+            'payment_method' => 'bank_transfer',
+            'notes' => 'Final settlement of remaining 70%',
+        ]);
+
+        $fullResponse->assertStatus(201)
+            ->assertJson([
+                'data' => [
+                    'amount' => '7000000.00',
+                    'status' => 'paid',
+                ],
+            ]);
+
+        // Business Result Check #2:
+        // Invoice status must be paid
+        $settledInvoice = $invoice->fresh();
+        $this->assertEquals(InvoiceStatus::Paid, $settledInvoice->status);
+        // Total paid must be Rp10.000.000
+        $this->assertEquals(10000000.00, $paymentService->getTotalPaid($settledInvoice));
+        // Outstanding balance must be exactly Rp0
+        $this->assertEquals(0.00, $paymentService->getOutstandingBalance($settledInvoice));
+
+        // Step 4: Any further payment attempt must be rejected as overpayment
+        $overpaymentResponse = $this->postJson("/api/invoices/{$invoice->id}/payments", [
+            'amount' => 100000.00,
+            'status' => 'paid',
+        ]);
+
+        $overpaymentResponse->assertStatus(422)
+            ->assertJsonValidationErrors(['amount']);
+
+        // Assert database state is preserved and not corrupted
+        $this->assertDatabaseCount('payments', 2);
+        $this->assertEquals(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertEquals(0.00, $paymentService->getOutstandingBalance($invoice->fresh()));
     }
 }

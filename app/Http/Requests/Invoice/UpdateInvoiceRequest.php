@@ -4,6 +4,7 @@ namespace App\Http\Requests\Invoice;
 
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\Product;
 use Carbon\Carbon;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -73,6 +74,20 @@ class UpdateInvoiceRequest extends FormRequest
 
             if ($issueDate && $dueDate && $dueDate->lt($issueDate)) {
                 $v->errors()->add('due_date', 'The due date must be a date after or equal to the issue date.');
+            }
+
+            if ($invoice && is_array($this->items)) {
+                foreach ($this->items as $index => $item) {
+                    if (! empty($item['product_id'])) {
+                        $productBelongs = Product::where('id', $item['product_id'])
+                            ->where('business_id', $invoice->business_id)
+                            ->exists();
+
+                        if (! $productBelongs) {
+                            $v->errors()->add("items.{$index}.product_id", 'The selected product does not belong to this business.');
+                        }
+                    }
+                }
             }
         });
     }

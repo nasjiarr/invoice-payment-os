@@ -4,6 +4,7 @@ namespace App\Http\Requests\Invoice;
 
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\Product;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
@@ -71,6 +72,20 @@ class StoreInvoiceRequest extends FormRequest
 
                 if ($numberExists) {
                     $v->errors()->add('invoice_number', 'The invoice number has already been taken for this business.');
+                }
+            }
+
+            if ($this->business_id && is_array($this->items)) {
+                foreach ($this->items as $index => $item) {
+                    if (! empty($item['product_id'])) {
+                        $productBelongs = Product::where('id', $item['product_id'])
+                            ->where('business_id', $this->business_id)
+                            ->exists();
+
+                        if (! $productBelongs) {
+                            $v->errors()->add("items.{$index}.product_id", 'The selected product does not belong to this business.');
+                        }
+                    }
                 }
             }
         });

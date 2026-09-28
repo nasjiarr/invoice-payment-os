@@ -438,4 +438,143 @@ class InvoiceTest extends TestCase
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['due_date']);
     }
+
+    public function test_terminal_status_transitions_cannot_be_reverted_or_violated_via_api(): void
+    {
+        $user = User::factory()->create();
+        $business = Business::factory()->create(['owner_id' => $user->id]);
+        $business->users()->attach($user->id, ['role' => BusinessRole::Owner->value]);
+
+        $invoicePaid = Invoice::factory()->create([
+            'business_id' => $business->id,
+            'status' => InvoiceStatus::Paid,
+        ]);
+
+        $invoiceVoid = Invoice::factory()->create([
+            'business_id' => $business->id,
+            'status' => InvoiceStatus::Void,
+        ]);
+
+        $invoiceCancelled = Invoice::factory()->create([
+            'business_id' => $business->id,
+            'status' => InvoiceStatus::Cancelled,
+        ]);
+
+        Sanctum::actingAs($user);
+
+        // 1. Paid invoice cannot be voided or cancelled
+        $this->postJson("/api/invoices/{$invoicePaid->id}/void")
+            ->assertStatus(422)
+            ->assertJson([
+                'message' => "Cannot transition invoice status from 'paid' to 'void'.",
+            ]);
+        $this->assertEquals(InvoiceStatus::Paid, $invoicePaid->fresh()->status);
+
+        $this->postJson("/api/invoices/{$invoicePaid->id}/cancel")
+            ->assertStatus(422)
+            ->assertJson([
+                'message' => "Cannot transition invoice status from 'paid' to 'cancelled'.",
+            ]);
+        $this->assertEquals(InvoiceStatus::Paid, $invoicePaid->fresh()->status);
+
+        // 2. Void invoice cannot be sent
+        $this->postJson("/api/invoices/{$invoiceVoid->id}/send")
+            ->assertStatus(422)
+            ->assertJson([
+                'message' => "Cannot transition invoice status from 'void' to 'sent'.",
+            ]);
+        $this->assertEquals(InvoiceStatus::Void, $invoiceVoid->fresh()->status);
+
+        // 3. Cancelled invoice cannot be sent
+        $this->postJson("/api/invoices/{$invoiceCancelled->id}/send")
+            ->assertStatus(422)
+            ->assertJson([
+                'message' => "Cannot transition invoice status from 'cancelled' to 'sent'.",
+            ]);
+        $this->assertEquals(InvoiceStatus::Cancelled, $invoiceCancelled->fresh()->status);
+    }
+
+    public function test_invoice_creation_rejects_negative_or_zero_quantity_and_negative_prices(): void
+    {
+        $user = User::factory()->create();
+        $business = Business::factory()->create(['owner_id' => $user->id]);
+        $business->users()->attach($user->id, ['role' => BusinessRole::Owner->value]);
+        $customer = Customer::factory()->create(['business_id' => $business->id]);
+
+        Sanctum::actingAs($user);
+
+        // Zero quantity
+        $this->postJson('/api/invoices', [
+            'business_id' => $business->id,
+            'customer_id' => $customer->id,
+            'issue_date' => '2026-10-01',
+            'due_date' => '2026-10-15',
+            'items' => [
+                ['description' => 'Test', 'quantity' => 0, 'unit_price' => 100000.00],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors(['items.0.quantity']);
+
+        // Negative quantity
+        $this->postJson('/api/invoices', [
+            'business_id' => $business->id,
+            'customer_id' => $customer->id,
+            'issue_date' => '2026-10-01',
+            'due_date' => '2026-10-15',
+            'items' => [
+                ['description' => 'Test', 'quantity' => -2, 'unit_price' => 100000.00],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors(['items.0.quantity']);
+
+        // Negative unit price
+        $this->postJson('/api/invoices', [
+            'business_id' => $business->id,
+            'customer_id' => $customer->id,
+            'issue_date' => '2026-10-01',
+            'due_date' => '2026-10-15',
+            'items' => [
+                ['description' => 'Test', 'quantity' => 1, 'unit_price' => -500.00],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors(['items.0.unit_price']);
+
+        // Negative discount
+        $this->postJson('/api/invoices', [
+            'business_id' => $business->id,
+            'customer_id' => $customer->id,
+            'issue_date' => '2026-10-01',
+            'due_date' => '2026-10-15',
+            'items' => [
+                ['description' => 'Test', 'quantity' => 1, 'unit_price' => 100000.00, 'discount' => -50.00],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors(['items.0.discount']);
+    }
+
+    public function test_cannot_update_invoice_content_when_not_in_draft_status(): void
+    {
+        $user = User::factory()->create();
+        $business = Business::factory()->create(['owner_id' => $user->id]);
+        $business->users()->attach($user->id, ['role' => BusinessRole::Owner->value]);
+
+        $invoiceSent = Invoice::factory()->create([
+            'business_id' => $business->id,
+            'status' => InvoiceStatus::Sent,
+            'notes' => 'Original Sent Notes',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        // Attempting to modify invoice content via PUT /api/invoices/{invoice}
+        $response = $this->putJson("/api/invoices/{$invoiceSent->id}", [
+            'notes' => 'Tampered Notes After Sending',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['status'])
+            ->assertJson([
+                'errors' => [
+                    'status' => ['Only draft invoices can be modified.'],
+                ],
+            ]);
+
+        $this->assertEquals('Original Sent Notes', $invoiceSent->fresh()->notes);
+    }
 }

@@ -193,4 +193,33 @@ class AuthTest extends TestCase
 
         $this->assertCount(0, $user->fresh()->tokens);
     }
+
+    public function test_unauthenticated_request_with_invalid_bearer_token(): void
+    {
+        $response = $this->withHeader('Authorization', 'Bearer 999|invalid_malformed_fake_token')
+            ->getJson('/api/user');
+
+        $response->assertStatus(401);
+    }
+
+    public function test_registration_validation_rules_for_mismatched_password_and_invalid_email(): void
+    {
+        // Mismatched password confirmation
+        $this->postJson('/api/register', [
+            'name' => 'John Doe',
+            'email' => 'john@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'different_password',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['password_confirmation']);
+
+        // Invalid email format
+        $this->postJson('/api/register', [
+            'name' => 'John Doe',
+            'email' => 'not-a-valid-email',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['email']);
+    }
 }
