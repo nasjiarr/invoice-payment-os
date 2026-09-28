@@ -30,4 +30,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('payments/{payment}', [PaymentController::class, 'show']);
     Route::post('payments/{payment}/process', [PaymentController::class, 'process']);
     Route::post('payments/{payment}/cancel', [PaymentController::class, 'cancel']);
+    Route::post('payments/{payment}/refund', [PaymentController::class, 'refund']);
+    Route::get('payments/{payment}/status', [PaymentController::class, 'status']);
 });

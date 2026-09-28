@@ -78,4 +78,42 @@ class PaymentController extends Controller
         return (new PaymentResource($payment))
             ->additional(['message' => 'Payment cancelled successfully']);
     }
+
+    /**
+     * Refund a paid payment.
+     */
+    public function refund(Request $request, Payment $payment, PaymentService $paymentService): PaymentResource
+    {
+        Gate::authorize('refund', $payment);
+
+        $validated = $request->validate([
+            'amount' => ['nullable', 'numeric', 'min:0.01', 'max:'.$payment->amount, 'decimal:0,2'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $payment = $paymentService->refundPayment(
+            $payment,
+            $request->user(),
+            $validated['amount'] ?? null,
+            $validated['reason'] ?? null
+        );
+
+        return (new PaymentResource($payment))
+            ->additional(['message' => 'Payment refunded successfully']);
+    }
+
+    /**
+     * Get payment status directly from the gateway.
+     */
+    public function status(Request $request, Payment $payment, PaymentService $paymentService): JsonResponse
+    {
+        Gate::authorize('view', $payment);
+
+        $response = $paymentService->getPaymentStatus($payment);
+
+        return response()->json([
+            'message' => 'Payment status retrieved successfully',
+            'data' => $response->toArray(),
+        ]);
+    }
 }

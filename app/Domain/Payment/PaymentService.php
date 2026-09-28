@@ -3,6 +3,8 @@
 namespace App\Domain\Payment;
 
 use App\Domain\Invoice\InvoiceStatusTransition;
+use App\Domain\Payment\Contracts\PaymentGatewayInterface;
+use App\Domain\Payment\Gateways\PaymentGatewayResponse;
 use App\Enums\InvoiceStatus;
 use App\Enums\PaymentStatus;
 use App\Models\AuditLog;
@@ -15,6 +17,21 @@ use Illuminate\Validation\ValidationException;
 
 class PaymentService
 {
+    /**
+     * PaymentService depends exclusively on the PaymentGatewayInterface abstraction.
+     */
+    public function __construct(
+        protected PaymentGatewayInterface $gateway
+    ) {}
+
+    /**
+     * Get the configured payment gateway instance.
+     */
+    public function getGateway(): PaymentGatewayInterface
+    {
+        return $this->gateway;
+    }
+
     /**
      * Get the total amount paid for an invoice.
      */
@@ -102,6 +119,15 @@ class PaymentService
                 'notes' => $data['notes'] ?? null,
             ]);
 
+            // Interact with the abstracted payment gateway
+            $gatewayResponse = $this->gateway->createPayment($payment, $data);
+
+            if ($targetStatus === PaymentStatus::Paid && ! $gatewayResponse->isSuccessful()) {
+                throw ValidationException::withMessages([
+                    'gateway' => [$gatewayResponse->getMessage() ?? 'Payment gateway declined transaction.'],
+                ]);
+            }
+
             if ($targetStatus === PaymentStatus::Paid) {
                 // Rule 7: Recalculate invoice status based on total paid vs invoice total
                 $totalPaid = $this->getTotalPaid($invoice);
@@ -127,6 +153,7 @@ class PaymentService
                         'invoice_id' => $invoice->id,
                         'new_invoice_status' => $invoice->fresh()->status->value,
                         'transaction_id' => $payment->transaction_id,
+                        'payment_url' => $gatewayResponse->getPaymentUrl(),
                     ],
                 ]);
             } elseif ($targetStatus === PaymentStatus::Failed) {
@@ -172,6 +199,7 @@ class PaymentService
                         'currency' => $payment->currency,
                         'invoice_id' => $invoice->id,
                         'transaction_id' => $payment->transaction_id,
+                        'payment_url' => $gatewayResponse->getPaymentUrl(),
                     ],
                 ]);
             }
@@ -272,6 +300,98 @@ class PaymentService
                 'metadata' => [
                     'payment_id' => $payment->id,
                     'invoice_id' => $payment->invoice_id,
+                ],
+            ]);
+
+            return $payment->fresh(['invoice', 'business']);
+        });
+    }
+
+    /**
+     * Get payment status from the payment gateway.
+     */
+    public function getPaymentStatus(Payment $payment): PaymentGatewayResponse
+    {
+        return $this->gateway->getPaymentStatus($payment->transaction_id);
+    }
+
+    /**
+     * Synchronize a pending payment with the gateway.
+     */
+    public function syncPaymentStatus(Payment $payment, User $user): Payment
+    {
+        $response = $this->getPaymentStatus($payment);
+
+        if ($payment->status === PaymentStatus::Pending && $response->isPaid()) {
+            return $this->processPayment($payment, $user);
+        }
+
+        return $payment;
+    }
+
+    /**
+     * Refund a paid payment through the payment gateway inside a database transaction.
+     */
+    public function refundPayment(Payment $payment, User $user, ?float $amount = null, ?string $reason = null): Payment
+    {
+        if ($payment->status !== PaymentStatus::Paid) {
+            throw ValidationException::withMessages([
+                'status' => ['Only paid payments can be refunded.'],
+            ]);
+        }
+
+        $refundAmount = $amount ?? (float) $payment->amount;
+        if ($refundAmount <= 0.0 || $refundAmount > (float) $payment->amount) {
+            throw ValidationException::withMessages([
+                'amount' => ['Refund amount must be between 0.01 and the original payment amount.'],
+            ]);
+        }
+
+        // Delegate refund to the abstracted payment gateway
+        $gatewayResponse = $this->gateway->refundPayment($payment, $refundAmount, $reason);
+
+        if (! $gatewayResponse->isSuccessful()) {
+            throw ValidationException::withMessages([
+                'gateway' => [$gatewayResponse->getMessage() ?? 'Payment gateway declined refund request.'],
+            ]);
+        }
+
+        return DB::transaction(function () use ($payment, $user, $refundAmount, $reason, $gatewayResponse): Payment {
+            $payment->update([
+                'status' => PaymentStatus::Refunded,
+            ]);
+
+            $invoice = $payment->invoice;
+
+            // Recalculate invoice status based on remaining total paid
+            $totalPaid = $this->getTotalPaid($invoice);
+
+            if ($totalPaid >= (float) $invoice->total) {
+                $newStatus = InvoiceStatus::Paid;
+            } elseif ($totalPaid > 0.0) {
+                $newStatus = InvoiceStatus::PartiallyPaid;
+            } else {
+                $newStatus = InvoiceStatus::Sent;
+            }
+
+            if ($invoice->status !== $newStatus) {
+                $invoice->update(['status' => $newStatus]);
+            }
+
+            AuditLog::create([
+                'business_id' => $payment->business_id,
+                'user_id' => $user->id,
+                'action' => 'payment.refunded',
+                'auditable_type' => Payment::class,
+                'auditable_id' => $payment->id,
+                'description' => "Payment of {$payment->currency} {$refundAmount} refunded for invoice {$invoice->invoice_number}",
+                'metadata' => [
+                    'amount' => $refundAmount,
+                    'currency' => $payment->currency,
+                    'invoice_id' => $invoice->id,
+                    'new_invoice_status' => $invoice->fresh()->status->value,
+                    'refund_transaction_id' => $gatewayResponse->getTransactionId(),
+                    'reason' => $reason,
                 ],
             ]);
 

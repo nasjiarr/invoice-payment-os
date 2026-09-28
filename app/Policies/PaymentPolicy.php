@@ -49,6 +49,14 @@ class PaymentPolicy
     }
 
     /**
+     * Determine whether the user can refund the payment.
+     */
+    public function refund(User $user, Payment $payment): bool
+    {
+        return $this->userBelongsToBusiness($user, $payment->business_id);
+    }
+
+    /**
      * Helper to verify if user owns or belongs to the business.
      */
     protected function userBelongsToBusiness(User $user, int $businessId): bool
