@@ -97,39 +97,95 @@ Proyek ini dibangun dengan arsitektur backend Laravel yang bersih, modular, aman
    ```
 
 ---
+---
 
-## 🧪 Menjalankan Pengujian (Testing)
+## 📚 Dokumentasi REST API & Swagger UI
 
+Sistem ini menyediakan RESTful API lengkap untuk semua modul bisnis dengan standar OpenAPI 3.1.0 dan antarmuka interaktif Swagger UI.
+
+### 🌐 Akses Dokumentasi Interaktif
+Jalankan aplikasi (`php artisan serve`) lalu buka di browser:
+* **Interactive Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs) (atau alias: `/api/documentation`)
+* **OpenAPI 3.1 Spec (YAML):** [http://localhost:8000/openapi.yaml](http://localhost:8000/openapi.yaml) (lokasi file: `public/openapi.yaml` & `openapi.yaml`)
+* **Panduan Markdown Lengkap:** [docs/api-reference.md](docs/api-reference.md)
+
+### 📦 Modul API yang Didokumentasikan
+1. **Authentication:** Register, Login, Logout, Current User (`/api/register`, `/api/login`, `/api/logout`, `/api/user`)
+2. **Business / Workspace:** Profil bisnis & konfigurasi workspace (`/api/businesses`, `/api/businesses/{business}`)
+3. **Customers:** Manajemen pelanggan dengan pagination & pencarian (`/api/customers`, `/api/customers/{customer}`)
+4. **Products / Services:** Manajemen katalog produk & harga aman (`/api/products`, `/api/products/{product}`)
+5. **Invoices:** Lifecycle invoice (`draft` → `sent` → `partially_paid` → `paid` / `void` / `cancelled`), actions, dan download PDF (`/api/invoices`, `/api/invoices/{invoice}`, `/send`, `/void`, `/cancel`, `/pdf`)
+6. **Invoice Items:** Snapshots item, kalkulasi otomatis subtotal, diskon, pajak, dan grand total (`/api/invoices/{invoice}/items`)
+7. **Payments:** Payment engine internal, pelacakan partial/full payment, overpayment guard (`/api/invoices/{invoice}/payments`, `/api/payments/{payment}`)
+8. **Webhooks:** Idempotent payment webhook ingest dengan deduplikasi event (`/api/webhooks/payment/{provider}`)
+9. **Reports:** Agregasi revenue, total invoiced, total paid, outstanding balance, dan overdue via database query (`/api/reports/revenue`)
+
+### ⚡ Contoh Penggunaan Cepat (Quick Start cURL)
+
+**1. Login & Dapatkan Bearer Token:**
 ```bash
-php artisan test
+curl -X POST http://localhost:8000/api/login \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{"email": "owner@example.com", "password": "password"}'
+```
+*Respons:*
+```json
+{
+  "token": "1|eXamPLeTokEn...",
+  "user": { "id": 1, "name": "Budi Santoso", "email": "owner@example.com" }
+}
+```
+
+**2. Memanggil Endpoint dengan Token:**
+```bash
+curl -X GET http://localhost:8000/api/invoices \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer 1|eXamPLeTokEn..."
 ```
 
 ---
 
-## 🗺️ Roadmap Pengembangan (19 Phase)
+## 🧪 Menjalankan Pengujian (Testing)
+
+Proyek ini memiliki cakupan pengujian otomatis (*Automated Feature & Unit Tests*) yang menyeluruh untuk setiap domain bisnis:
+
+```bash
+# Menjalankan seluruh test suite
+php artisan test
+
+# Menjalankan pengujian spesifik
+php artisan test --filter=InvoiceTest
+php artisan test --filter=PaymentWebhookTest
+php artisan test --filter=RevenueReportTest
+php artisan test --filter=DocumentationTest
+```
+
+---
+
+## 🗺️ Roadmap Pengembangan
 
 - [x] **Phase 1 — Project Foundation:** Inisialisasi framework, env setup, koneksi MySQL, migrasi dasar, timezone `Asia/Jakarta`, locale `id`, format IDR, git setup.
-- [ ] **Phase 2 — Database Design:** Skema tabel relasional lengkap (workspace, customer, product, invoice, items, payments, events).
-- [ ] **Phase 3 — Authentication:** Web session auth & Sanctum token auth.
-- [ ] **Phase 4 — Business / Workspace Management:** Isolasi workspace dan relasi user-tenant.
-- [ ] **Phase 5 — Customer Management:** CRUD pelanggan dengan policy & Form Request.
-- [ ] **Phase 6 — Product / Service Management:** CRUD produk/layanan harga satuan.
-- [ ] **Phase 7 — Invoice Engine:** Generator nomor invoice, kalkulator subtotal/diskon/pajak, state machine invoice.
-- [ ] **Phase 8 — Invoice PDF:** Template cetak invoice profesional & PDF stream/download.
-- [ ] **Phase 9 — Payment Engine:** Input pembayaran parsial/lunas & atomisitas balance update.
-- [ ] **Phase 10 — Mock Payment Gateway:** Abstraksi interface gateway & implementasi mock gateway lokal.
-- [ ] **Phase 11 — Webhook + Idempotency:** Webhook processor aman dengan deduplikasi transaksi.
-- [ ] **Phase 12 — Real Payment Gateway:** Integrasi Midtrans / Xendit adapter.
-- [ ] **Phase 13 — Reminder & Queue:** Background jobs untuk email reminder tagihan mendekati jatuh tempo.
-- [ ] **Phase 14 — Reports:** Ringkasan keuangan (pemasukan, piutang, status penagihan).
-- [ ] **Phase 15 — REST API:** API Resource & API endpoints terstandarisasi.
-- [ ] **Phase 16 — Automated Testing:** Unit & Feature test untuk skenario bisnis krusial.
-- [ ] **Phase 17 — Security Hardening:** Evaluasi IDOR, sanitasi input, audit trail, security headers.
-- [ ] **Phase 18 — Docker & Deployment:** Containerization & production configuration.
-- [ ] **Phase 19 — Documentation:** OpenAPI/Swagger & project portfolio documentation.
+- [x] **Phase 2 — Database Design:** Skema tabel relasional lengkap (workspace, customer, product, invoice, items, payments, events).
+- [x] **Phase 3 — Authentication:** Web session auth & Sanctum token auth.
+- [x] **Phase 4 — Business / Workspace Management:** Isolasi workspace dan relasi user-tenant.
+- [x] **Phase 5 — Customer Management:** CRUD pelanggan dengan pagination, search, validation, authorization & API Resource.
+- [x] **Phase 6 — Product / Service Management:** CRUD produk/layanan dengan tipe data desimal moneter aman & snapshot protection.
+- [x] **Phase 7 — Invoice Engine:** State machine invoice (`draft`, `sent`, `partially_paid`, `paid`, `void`, `cancelled`), generator nomor invoice unik, kalkulasi subtotal/diskon/pajak otomatis, dan atomic database transaction.
+- [x] **Phase 8 — Invoice PDF:** Generasi file PDF invoice profesional dari database dengan validasi otorisasi tenant (`GET /api/invoices/{invoice}/pdf`).
+- [x] **Phase 9 — Payment Engine:** Pembayaran parsial/penuh, validasi overpayment, update status invoice otomatis, dan database locking/transaction.
+- [x] **Phase 10 — Payment Gateway Abstraction:** Arsitektur decoupled dengan `PaymentGatewayInterface`, `MockPaymentGateway`, dan Laravel Service Container Dependency Injection.
+- [x] **Phase 11 — Webhook & Idempotency:** Webhook ingest handler aman terhadap pengiriman event ganda & race condition menggunakan atomic transaction dan deduplikasi `PaymentEvent`.
+- [x] **Phase 12 — Queue & Reminder:** Pengingat invoice jatuh tempo otomatis (H-7, H-3, H-0, Overdue) via `SendInvoiceReminderJob`, `InvoiceDueReminderNotification`, dan Laravel Scheduler.
+- [x] **Phase 13 — Reports:** Endpoint agregasi performa finansial (`/api/reports/revenue`) berbasis database aggregate query yang aman dari N+1 dan IDOR.
+- [x] **Phase 14 — REST API Documentation:** Dokumentasi OpenAPI 3.1.0 interaktif via Swagger UI (`/docs`) dan referensi lengkap developer (`docs/api-reference.md`).
+- [ ] **Phase 15 — Real Payment Gateway Adapter:** Integrasi konkret Midtrans Snap / Xendit Invoice adapter.
+- [ ] **Phase 16 — Security Hardening:** Rate limiting API, security headers, dan audit trail logging.
+- [ ] **Phase 17 — Docker & Deployment:** Containerization Docker & deployment script production.
 
 ---
 
 ## 📄 Lisensi
 
 Proyek ini dirilis di bawah lisensi [MIT](LICENSE).
+
