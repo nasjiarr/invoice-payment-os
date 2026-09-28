@@ -107,9 +107,23 @@ class PaymentService
         }
 
         return DB::transaction(function () use ($invoice, $user, $data, $amount, $currency, $targetStatus, $transactionId): Payment {
+            /** @var Invoice $lockedInvoice */
+            $lockedInvoice = Invoice::where('id', $invoice->id)->lockForUpdate()->firstOrFail();
+
+            // Re-verify outstanding balance inside transaction under row lock
+            if ($targetStatus === PaymentStatus::Paid) {
+                $outstandingBalance = $this->getOutstandingBalance($lockedInvoice);
+
+                if ($amount > $outstandingBalance + 0.0001) {
+                    throw ValidationException::withMessages([
+                        'amount' => ['Payment amount exceeds invoice outstanding balance.'],
+                    ]);
+                }
+            }
+
             $payment = Payment::create([
-                'business_id' => $invoice->business_id,
-                'invoice_id' => $invoice->id,
+                'business_id' => $lockedInvoice->business_id,
+                'invoice_id' => $lockedInvoice->id,
                 'amount' => $amount,
                 'currency' => $currency,
                 'status' => $targetStatus,
@@ -213,32 +227,36 @@ class PaymentService
      */
     public function processPayment(Payment $payment, ?User $user = null): Payment
     {
-        // Rule 8: Payment cannot be processed twice
-        if ($payment->status !== PaymentStatus::Pending) {
-            throw ValidationException::withMessages([
-                'status' => ['Payment has already been processed and cannot be processed again.'],
-            ]);
-        }
+        return DB::transaction(function () use ($payment, $user): Payment {
+            /** @var Payment $lockedPayment */
+            $lockedPayment = Payment::where('id', $payment->id)->lockForUpdate()->firstOrFail();
 
-        $invoice = $payment->invoice;
+            // Rule 8: Payment cannot be processed twice
+            if ($lockedPayment->status !== PaymentStatus::Pending) {
+                throw ValidationException::withMessages([
+                    'status' => ['Payment has already been processed and cannot be processed again.'],
+                ]);
+            }
 
-        // Terminal invoice states check
-        if (in_array($invoice->status, [InvoiceStatus::Void, InvoiceStatus::Cancelled], true)) {
-            throw ValidationException::withMessages([
-                'status' => ["Cannot process payment for an invoice with status '{$invoice->status->value}'."],
-            ]);
-        }
+            /** @var Invoice $invoice */
+            $invoice = Invoice::where('id', $lockedPayment->invoice_id)->lockForUpdate()->firstOrFail();
 
-        // Outstanding balance and overpayment check (Rule 2)
-        $outstandingBalance = $this->getOutstandingBalance($invoice);
-        if ((float) $payment->amount > $outstandingBalance + 0.0001) {
-            throw ValidationException::withMessages([
-                'amount' => ['Payment amount exceeds invoice outstanding balance.'],
-            ]);
-        }
+            // Terminal invoice states check
+            if (in_array($invoice->status, [InvoiceStatus::Void, InvoiceStatus::Cancelled], true)) {
+                throw ValidationException::withMessages([
+                    'status' => ["Cannot process payment for an invoice with status '{$invoice->status->value}'."],
+                ]);
+            }
 
-        return DB::transaction(function () use ($payment, $invoice, $user): Payment {
-            $payment->update([
+            // Outstanding balance and overpayment check (Rule 2)
+            $outstandingBalance = $this->getOutstandingBalance($invoice);
+            if ((float) $lockedPayment->amount > $outstandingBalance + 0.0001) {
+                throw ValidationException::withMessages([
+                    'amount' => ['Payment amount exceeds invoice outstanding balance.'],
+                ]);
+            }
+
+            $lockedPayment->update([
                 'status' => PaymentStatus::Paid,
                 'paid_at' => now(),
             ]);
@@ -259,18 +277,18 @@ class PaymentService
                 'user_id' => $user?->id,
                 'action' => 'payment.received',
                 'auditable_type' => Payment::class,
-                'auditable_id' => $payment->id,
-                'description' => "Payment of {$payment->currency} {$payment->amount} received for invoice {$invoice->invoice_number}",
+                'auditable_id' => $lockedPayment->id,
+                'description' => "Payment of {$lockedPayment->currency} {$lockedPayment->amount} received for invoice {$invoice->invoice_number}",
                 'metadata' => [
-                    'amount' => $payment->amount,
-                    'currency' => $payment->currency,
+                    'amount' => $lockedPayment->amount,
+                    'currency' => $lockedPayment->currency,
                     'invoice_id' => $invoice->id,
                     'new_invoice_status' => $invoice->fresh()->status->value,
-                    'transaction_id' => $payment->transaction_id,
+                    'transaction_id' => $lockedPayment->transaction_id,
                 ],
             ]);
 
-            return $payment->fresh(['invoice', 'business']);
+            return $lockedPayment->fresh(['invoice', 'business']);
         });
     }
 
@@ -279,31 +297,34 @@ class PaymentService
      */
     public function cancelPayment(Payment $payment, ?User $user = null): Payment
     {
-        if ($payment->status !== PaymentStatus::Pending) {
-            throw ValidationException::withMessages([
-                'status' => ['Only pending payments can be cancelled.'],
-            ]);
-        }
-
         return DB::transaction(function () use ($payment, $user): Payment {
-            $payment->update([
+            /** @var Payment $lockedPayment */
+            $lockedPayment = Payment::where('id', $payment->id)->lockForUpdate()->firstOrFail();
+
+            if ($lockedPayment->status !== PaymentStatus::Pending) {
+                throw ValidationException::withMessages([
+                    'status' => ['Only pending payments can be cancelled.'],
+                ]);
+            }
+
+            $lockedPayment->update([
                 'status' => PaymentStatus::Cancelled,
             ]);
 
             AuditLog::create([
-                'business_id' => $payment->business_id,
+                'business_id' => $lockedPayment->business_id,
                 'user_id' => $user?->id,
                 'action' => 'payment.cancelled',
                 'auditable_type' => Payment::class,
-                'auditable_id' => $payment->id,
-                'description' => "Payment {$payment->transaction_id} cancelled",
+                'auditable_id' => $lockedPayment->id,
+                'description' => "Payment {$lockedPayment->transaction_id} cancelled",
                 'metadata' => [
-                    'payment_id' => $payment->id,
-                    'invoice_id' => $payment->invoice_id,
+                    'payment_id' => $lockedPayment->id,
+                    'invoice_id' => $lockedPayment->invoice_id,
                 ],
             ]);
 
-            return $payment->fresh(['invoice', 'business']);
+            return $lockedPayment->fresh(['invoice', 'business']);
         });
     }
 
@@ -334,30 +355,33 @@ class PaymentService
      */
     public function refundPayment(Payment $payment, ?User $user = null, ?float $amount = null, ?string $reason = null): Payment
     {
-        if ($payment->status !== PaymentStatus::Paid) {
-            throw ValidationException::withMessages([
-                'status' => ['Only paid payments can be refunded.'],
-            ]);
-        }
+        return DB::transaction(function () use ($payment, $user, $amount, $reason): Payment {
+            /** @var Payment $lockedPayment */
+            $lockedPayment = Payment::where('id', $payment->id)->lockForUpdate()->firstOrFail();
 
-        $refundAmount = $amount ?? (float) $payment->amount;
-        if ($refundAmount <= 0.0 || $refundAmount > (float) $payment->amount) {
-            throw ValidationException::withMessages([
-                'amount' => ['Refund amount must be between 0.01 and the original payment amount.'],
-            ]);
-        }
+            if ($lockedPayment->status !== PaymentStatus::Paid) {
+                throw ValidationException::withMessages([
+                    'status' => ['Only paid payments can be refunded.'],
+                ]);
+            }
 
-        // Delegate refund to the abstracted payment gateway
-        $gatewayResponse = $this->gateway->refundPayment($payment, $refundAmount, $reason);
+            $refundAmount = $amount ?? (float) $lockedPayment->amount;
+            if ($refundAmount <= 0.0 || $refundAmount > (float) $lockedPayment->amount) {
+                throw ValidationException::withMessages([
+                    'amount' => ['Refund amount must be between 0.01 and the original payment amount.'],
+                ]);
+            }
 
-        if (! $gatewayResponse->isSuccessful()) {
-            throw ValidationException::withMessages([
-                'gateway' => [$gatewayResponse->getMessage() ?? 'Payment gateway declined refund request.'],
-            ]);
-        }
+            // Delegate refund to the abstracted payment gateway
+            $gatewayResponse = $this->gateway->refundPayment($lockedPayment, $refundAmount, $reason);
 
-        return DB::transaction(function () use ($payment, $user, $refundAmount, $reason, $gatewayResponse): Payment {
-            $payment->update([
+            if (! $gatewayResponse->isSuccessful()) {
+                throw ValidationException::withMessages([
+                    'gateway' => [$gatewayResponse->getMessage() ?? 'Payment gateway declined refund request.'],
+                ]);
+            }
+
+            $lockedPayment->update([
                 'status' => PaymentStatus::Refunded,
             ]);
 

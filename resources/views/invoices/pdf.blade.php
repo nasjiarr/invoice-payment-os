@@ -133,7 +133,7 @@
                 <div class="entity-name">{{ $business->name }}</div>
                 @if($business->email) <div>{{ $business->email }}</div> @endif
                 @if($business->phone) <div>{{ $business->phone }}</div> @endif
-                @if($business->address) <div>{{ nl2br(e($business->address)) }}</div> @endif
+                @if($business->address) <div>{!! nl2br(e($business->address)) !!}</div> @endif
                 @if($business->tax_id) <div style="font-size: 11px; color: #718096;">Tax ID: {{ $business->tax_id }}</div> @endif
             </td>
         </tr>
@@ -146,7 +146,7 @@
                 <div class="entity-name">{{ $customer->name }}</div>
                 @if($customer->email) <div>{{ $customer->email }}</div> @endif
                 @if($customer->phone) <div>{{ $customer->phone }}</div> @endif
-                @if($customer->address) <div>{{ nl2br(e($customer->address)) }}</div> @endif
+                @if($customer->address) <div>{!! nl2br(e($customer->address)) !!}</div> @endif
             </td>
             <td class="text-right">
                 <div class="section-title">Invoice Details</div>
@@ -208,7 +208,7 @@
     @if($invoice->notes)
         <div class="notes-section">
             <div class="section-title">Notes / Terms</div>
-            <div>{{ nl2br(e($invoice->notes)) }}</div>
+            <div>{!! nl2br(e($invoice->notes)) !!}</div>
         </div>
     @endif
 </body>

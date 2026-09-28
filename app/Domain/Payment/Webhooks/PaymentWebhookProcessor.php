@@ -55,15 +55,27 @@ class PaymentWebhookProcessor
     ) {}
 
     /**
-     * Process an incoming webhook payload idempotently.
+     * Process an incoming webhook payload idempotently and securely.
      *
      * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $headers
      * @return array<string, mixed>
      *
      * @throws ValidationException|PaymentNotFoundException|\Throwable
      */
-    public function process(string $provider, array $payload): array
+    public function process(string $provider, array $payload, array $headers = [], ?string $rawContent = null): array
     {
+        // Security Check 1: Provider whitelisting
+        $allowedProviders = config('payment.webhook.allowed_providers', ['mock', 'midtrans', 'xendit']);
+        if (! in_array(strtolower($provider), $allowedProviders, true)) {
+            throw ValidationException::withMessages([
+                'provider' => ["Unsupported payment webhook provider '{$provider}'."],
+            ]);
+        }
+
+        // Security Check 2: Webhook signature / token verification
+        $this->verifyWebhookAuthenticity($provider, $payload, $headers, $rawContent);
+
         // Step 1: Extract and validate required event metadata
         $eventId = $this->extractEventId($payload);
         $eventType = $this->extractEventType($payload);
@@ -296,5 +308,60 @@ class PaymentWebhookProcessor
             ?? null;
 
         return is_string($txId) && trim($txId) !== '' ? trim($txId) : null;
+    }
+
+    /**
+     * Verify webhook signature or authenticity token if configured.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $headers
+     */
+    protected function verifyWebhookAuthenticity(string $provider, array $payload, array $headers = [], ?string $rawContent = null): void
+    {
+        $secret = config('payment.webhook.secret');
+
+        if (! empty($secret)) {
+            $headerName = config('payment.webhook.signature_header', 'X-Webhook-Signature');
+            $signature = $this->getHeaderValue($headers, $headerName)
+                ?? $this->getHeaderValue($headers, 'X-Signature')
+                ?? $this->getHeaderValue($headers, 'X-Callback-Token');
+
+            if (! $signature) {
+                throw ValidationException::withMessages([
+                    'signature' => ['Webhook signature is required but missing from request headers.'],
+                ]);
+            }
+
+            // Compute HMAC SHA-256 over raw content or JSON-encoded payload
+            $contentToVerify = $rawContent ?: json_encode($payload);
+            $expectedSignature = hash_hmac('sha256', $contentToVerify, $secret);
+
+            // Also check direct token match for token-based gateways (e.g. Xendit callback token)
+            $isHmacValid = hash_equals($expectedSignature, $signature);
+            $isTokenValid = hash_equals($secret, $signature);
+
+            if (! $isHmacValid && ! $isTokenValid) {
+                throw ValidationException::withMessages([
+                    'signature' => ['Invalid webhook signature.'],
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Retrieve header value case-insensitively.
+     *
+     * @param  array<string, mixed>  $headers
+     */
+    protected function getHeaderValue(array $headers, string $key): ?string
+    {
+        $normalizedKey = strtolower($key);
+        foreach ($headers as $k => $v) {
+            if (strtolower($k) === $normalizedKey) {
+                return is_array($v) ? ($v[0] ?? null) : (string) $v;
+            }
+        }
+
+        return null;
     }
 }

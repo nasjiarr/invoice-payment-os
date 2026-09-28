@@ -16,7 +16,12 @@ class PaymentWebhookController extends Controller
     {
         $payload = $request->all();
 
-        $result = $processor->process($provider, $payload);
+        $result = $processor->process(
+            $provider,
+            $payload,
+            $request->headers->all(),
+            $request->getContent()
+        );
 
         return response()->json($result, 200);
     }

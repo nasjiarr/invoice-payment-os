@@ -42,4 +42,20 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Webhook Security Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Defines supported providers and secret tokens used to verify webhook
+    | authenticity and prevent spoofed payment callbacks.
+    |
+    */
+
+    'webhook' => [
+        'secret' => env('PAYMENT_WEBHOOK_SECRET'),
+        'allowed_providers' => ['mock', 'midtrans', 'xendit'],
+        'signature_header' => env('PAYMENT_WEBHOOK_SIGNATURE_HEADER', 'X-Webhook-Signature'),
+    ],
+
 ];

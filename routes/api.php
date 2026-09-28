@@ -10,13 +10,13 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ReportController;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:register');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
-// Payment Webhook endpoint (unauthenticated, server-to-server)
-Route::post('/webhooks/payment/{provider}', [PaymentWebhookController::class, 'handle']);
+// Payment Webhook endpoint (unauthenticated, server-to-server with throttle)
+Route::post('/webhooks/payment/{provider}', [PaymentWebhookController::class, 'handle'])->middleware('throttle:webhook');
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
