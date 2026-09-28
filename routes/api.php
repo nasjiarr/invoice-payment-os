@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\ProductController;
 use Illuminate\Support\Facades\Route;
 
@@ -16,4 +17,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('business', BusinessController::class);
     Route::apiResource('customers', CustomerController::class);
     Route::apiResource('products', ProductController::class);
+
+    Route::post('invoices/{invoice}/send', [InvoiceController::class, 'send']);
+    Route::post('invoices/{invoice}/void', [InvoiceController::class, 'void']);
+    Route::post('invoices/{invoice}/cancel', [InvoiceController::class, 'cancel']);
+    Route::apiResource('invoices', InvoiceController::class);
 });

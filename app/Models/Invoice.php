@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\InvoiceStatus;
 use Database\Factories\InvoiceFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -46,6 +47,20 @@ class Invoice extends Model
             'discount' => 'decimal:2',
             'total' => 'decimal:2',
         ];
+    }
+
+    /**
+     * Scope a query to only include invoices accessible by a specific user.
+     *
+     * @param  Builder<Invoice>  $query
+     * @return Builder<Invoice>
+     */
+    public function scopeAccessibleBy(Builder $query, User $user): Builder
+    {
+        return $query->whereHas('business', function (Builder $bQuery) use ($user): void {
+            $bQuery->where('owner_id', $user->id)
+                ->orWhereHas('users', fn (Builder $uQuery) => $uQuery->where('users.id', $user->id));
+        });
     }
 
     /**
