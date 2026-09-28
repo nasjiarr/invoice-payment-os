@@ -112,4 +112,14 @@ class Invoice extends Model
     {
         return $this->morphMany(AuditLog::class, 'auditable');
     }
+
+    /**
+     * Get the reminders sent for this invoice.
+     *
+     * @return HasMany<InvoiceReminder, $this>
+     */
+    public function reminders(): HasMany
+    {
+        return $this->hasMany(InvoiceReminder::class);
+    }
 }
