@@ -21,5 +21,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('invoices/{invoice}/send', [InvoiceController::class, 'send']);
     Route::post('invoices/{invoice}/void', [InvoiceController::class, 'void']);
     Route::post('invoices/{invoice}/cancel', [InvoiceController::class, 'cancel']);
+    Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'pdf']);
     Route::apiResource('invoices', InvoiceController::class);
 });

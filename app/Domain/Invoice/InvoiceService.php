@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\User;
+use Barryvdh\DomPDF\PDF;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -258,6 +259,21 @@ class InvoiceService
 
             $invoice->delete();
         });
+    }
+
+    /**
+     * Generate a PDF instance for the given invoice.
+     */
+    public function generatePdf(Invoice $invoice): PDF
+    {
+        $invoice->loadMissing(['business', 'customer', 'items']);
+
+        return \Barryvdh\DomPDF\Facade\Pdf::loadView('invoices.pdf', [
+            'invoice' => $invoice,
+            'business' => $invoice->business,
+            'customer' => $invoice->customer,
+            'items' => $invoice->items,
+        ])->setPaper('a4', 'portrait');
     }
 
     /**

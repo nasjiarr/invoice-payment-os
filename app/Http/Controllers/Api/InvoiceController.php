@@ -11,6 +11,7 @@ use App\Models\Invoice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
 
 class InvoiceController extends Controller
@@ -160,5 +161,18 @@ class InvoiceController extends Controller
 
         return (new InvoiceResource($invoice))
             ->additional(['message' => 'Invoice cancelled successfully']);
+    }
+
+    /**
+     * Download the invoice PDF.
+     */
+    public function pdf(Request $request, Invoice $invoice, InvoiceService $invoiceService): Response
+    {
+        Gate::authorize('view', $invoice);
+
+        $pdf = $invoiceService->generatePdf($invoice);
+        $filename = "invoice-{$invoice->invoice_number}.pdf";
+
+        return $pdf->download($filename);
     }
 }
