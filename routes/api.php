@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentWebhookController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ReportController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [AuthController::class, 'register']);
@@ -36,4 +37,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('payments/{payment}/cancel', [PaymentController::class, 'cancel']);
     Route::post('payments/{payment}/refund', [PaymentController::class, 'refund']);
     Route::get('payments/{payment}/status', [PaymentController::class, 'status']);
+
+    Route::get('reports/revenue', [ReportController::class, 'revenue']);
 });
