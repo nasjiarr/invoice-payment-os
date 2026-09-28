@@ -5,11 +5,15 @@ use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PaymentWebhookController;
 use App\Http\Controllers\Api\ProductController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+
+// Payment Webhook endpoint (unauthenticated, server-to-server)
+Route::post('/webhooks/payment/{provider}', [PaymentWebhookController::class, 'handle']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);

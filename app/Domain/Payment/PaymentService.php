@@ -57,7 +57,7 @@ class PaymentService
      *
      * @param  array<string, mixed>  $data
      */
-    public function createPayment(Invoice $invoice, User $user, array $data): Payment
+    public function createPayment(Invoice $invoice, ?User $user = null, array $data = []): Payment
     {
         // Terminal invoice states check
         if (in_array($invoice->status, [InvoiceStatus::Void, InvoiceStatus::Cancelled], true)) {
@@ -142,7 +142,7 @@ class PaymentService
 
                 AuditLog::create([
                     'business_id' => $invoice->business_id,
-                    'user_id' => $user->id,
+                    'user_id' => $user?->id,
                     'action' => 'payment.received',
                     'auditable_type' => Payment::class,
                     'auditable_id' => $payment->id,
@@ -159,7 +159,7 @@ class PaymentService
             } elseif ($targetStatus === PaymentStatus::Failed) {
                 AuditLog::create([
                     'business_id' => $invoice->business_id,
-                    'user_id' => $user->id,
+                    'user_id' => $user?->id,
                     'action' => 'payment.failed',
                     'auditable_type' => Payment::class,
                     'auditable_id' => $payment->id,
@@ -174,7 +174,7 @@ class PaymentService
             } elseif ($targetStatus === PaymentStatus::Cancelled) {
                 AuditLog::create([
                     'business_id' => $invoice->business_id,
-                    'user_id' => $user->id,
+                    'user_id' => $user?->id,
                     'action' => 'payment.cancelled',
                     'auditable_type' => Payment::class,
                     'auditable_id' => $payment->id,
@@ -189,7 +189,7 @@ class PaymentService
             } else {
                 AuditLog::create([
                     'business_id' => $invoice->business_id,
-                    'user_id' => $user->id,
+                    'user_id' => $user?->id,
                     'action' => 'payment.created',
                     'auditable_type' => Payment::class,
                     'auditable_id' => $payment->id,
@@ -211,7 +211,7 @@ class PaymentService
     /**
      * Process a pending payment to paid status (Rule 8: cannot process twice).
      */
-    public function processPayment(Payment $payment, User $user): Payment
+    public function processPayment(Payment $payment, ?User $user = null): Payment
     {
         // Rule 8: Payment cannot be processed twice
         if ($payment->status !== PaymentStatus::Pending) {
@@ -256,7 +256,7 @@ class PaymentService
 
             AuditLog::create([
                 'business_id' => $invoice->business_id,
-                'user_id' => $user->id,
+                'user_id' => $user?->id,
                 'action' => 'payment.received',
                 'auditable_type' => Payment::class,
                 'auditable_id' => $payment->id,
@@ -277,7 +277,7 @@ class PaymentService
     /**
      * Cancel a pending payment.
      */
-    public function cancelPayment(Payment $payment, User $user): Payment
+    public function cancelPayment(Payment $payment, ?User $user = null): Payment
     {
         if ($payment->status !== PaymentStatus::Pending) {
             throw ValidationException::withMessages([
@@ -292,7 +292,7 @@ class PaymentService
 
             AuditLog::create([
                 'business_id' => $payment->business_id,
-                'user_id' => $user->id,
+                'user_id' => $user?->id,
                 'action' => 'payment.cancelled',
                 'auditable_type' => Payment::class,
                 'auditable_id' => $payment->id,
@@ -318,7 +318,7 @@ class PaymentService
     /**
      * Synchronize a pending payment with the gateway.
      */
-    public function syncPaymentStatus(Payment $payment, User $user): Payment
+    public function syncPaymentStatus(Payment $payment, ?User $user = null): Payment
     {
         $response = $this->getPaymentStatus($payment);
 
@@ -332,7 +332,7 @@ class PaymentService
     /**
      * Refund a paid payment through the payment gateway inside a database transaction.
      */
-    public function refundPayment(Payment $payment, User $user, ?float $amount = null, ?string $reason = null): Payment
+    public function refundPayment(Payment $payment, ?User $user = null, ?float $amount = null, ?string $reason = null): Payment
     {
         if ($payment->status !== PaymentStatus::Paid) {
             throw ValidationException::withMessages([
@@ -380,7 +380,7 @@ class PaymentService
 
             AuditLog::create([
                 'business_id' => $payment->business_id,
-                'user_id' => $user->id,
+                'user_id' => $user?->id,
                 'action' => 'payment.refunded',
                 'auditable_type' => Payment::class,
                 'auditable_id' => $payment->id,
