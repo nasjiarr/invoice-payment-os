@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\PaymentStatus;
 use Database\Factories\PaymentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -38,6 +39,20 @@ class Payment extends Model
             'status' => PaymentStatus::class,
             'paid_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Scope a query to only include payments accessible by a specific user.
+     *
+     * @param  Builder<Payment>  $query
+     * @return Builder<Payment>
+     */
+    public function scopeAccessibleBy(Builder $query, User $user): Builder
+    {
+        return $query->whereHas('business', function (Builder $bQuery) use ($user): void {
+            $bQuery->where('owner_id', $user->id)
+                ->orWhereHas('users', fn (Builder $uQuery) => $uQuery->where('users.id', $user->id));
+        });
     }
 
     /**

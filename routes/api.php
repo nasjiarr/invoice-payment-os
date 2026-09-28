@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
 use Illuminate\Support\Facades\Route;
 
@@ -23,4 +24,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('invoices/{invoice}/cancel', [InvoiceController::class, 'cancel']);
     Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'pdf']);
     Route::apiResource('invoices', InvoiceController::class);
+
+    Route::get('invoices/{invoice}/payments', [PaymentController::class, 'index']);
+    Route::post('invoices/{invoice}/payments', [PaymentController::class, 'store']);
+    Route::get('payments/{payment}', [PaymentController::class, 'show']);
+    Route::post('payments/{payment}/process', [PaymentController::class, 'process']);
+    Route::post('payments/{payment}/cancel', [PaymentController::class, 'cancel']);
 });

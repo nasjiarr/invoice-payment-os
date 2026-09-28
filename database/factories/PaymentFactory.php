@@ -47,4 +47,48 @@ class PaymentFactory extends Factory
             'paid_at' => now(),
         ]);
     }
+
+    /**
+     * Indicate that the payment is pending.
+     */
+    public function pending(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => PaymentStatus::Pending,
+            'paid_at' => null,
+        ]);
+    }
+
+    /**
+     * Indicate that the payment is failed.
+     */
+    public function failed(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => PaymentStatus::Failed,
+            'paid_at' => null,
+        ]);
+    }
+
+    /**
+     * Indicate that the payment is cancelled.
+     */
+    public function cancelled(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => PaymentStatus::Cancelled,
+            'paid_at' => null,
+        ]);
+    }
+
+    /**
+     * Indicate that the payment is refunded.
+     */
+    public function refunded(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => PaymentStatus::Refunded,
+            'paid_at' => now(),
+        ]);
+    }
 }

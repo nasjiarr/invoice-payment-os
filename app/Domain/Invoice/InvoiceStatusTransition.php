@@ -19,6 +19,8 @@ class InvoiceStatusTransition
         return match ($from) {
             InvoiceStatus::Draft => in_array($to, [
                 InvoiceStatus::Sent,
+                InvoiceStatus::PartiallyPaid,
+                InvoiceStatus::Paid,
                 InvoiceStatus::Cancelled,
             ], true),
 
