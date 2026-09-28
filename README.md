@@ -180,8 +180,29 @@ php artisan test --filter=DocumentationTest
 - [x] **Phase 13 — Reports:** Endpoint agregasi performa finansial (`/api/reports/revenue`) berbasis database aggregate query yang aman dari N+1 dan IDOR.
 - [x] **Phase 14 — REST API Documentation:** Dokumentasi OpenAPI 3.1.0 interaktif via Swagger UI (`/docs`) dan referensi lengkap developer (`docs/api-reference.md`).
 - [ ] **Phase 15 — Real Payment Gateway Adapter:** Integrasi konkret Midtrans Snap / Xendit Invoice adapter.
-- [ ] **Phase 16 — Security Hardening:** Rate limiting API, security headers, dan audit trail logging.
-- [ ] **Phase 17 — Docker & Deployment:** Containerization Docker & deployment script production.
+- [x] **Phase 16 — Security Audit & Hardening:** Audit keamanan menyeluruh, IDOR protection, mass assignment guard, zero-trust amount, idempotent webhooks, rate limiting, dan [SECURITY.md](SECURITY.md).
+- [x] **Phase 17 — Docker & Deployment:** Containerization Docker (Nginx, PHP 8.4-FPM, MySQL 8.0, Redis 7), autonomous queue worker & task scheduler daemons, dan panduan operasional lengkap di [DEPLOYMENT.md](DEPLOYMENT.md).
+
+---
+
+## 🐳 Docker Deployment Cepat
+
+Aplikasi telah sepenuhnya di-containerize menggunakan Docker Compose dengan layanan mandiri:
+
+```bash
+# 1. Jalankan seluruh container di background
+docker compose up -d --build
+
+# 2. Setup database awal
+docker compose exec app php artisan key:generate
+docker compose exec app php artisan migrate --seed
+
+# 3. Cek status container
+docker compose ps
+```
+
+Untuk panduan produksi, backup, logging, dan manajemen worker/scheduler, baca dokumentasi lengkap di:
+👉 **[Panduan Deployment & Operasional (DEPLOYMENT.md)](DEPLOYMENT.md)**
 
 ---
 
